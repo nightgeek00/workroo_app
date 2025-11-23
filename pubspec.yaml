@@ -1,0 +1,22 @@
+name: workroo_app
+description: Workroo App (Home, Visa, Postcode, Profile)
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.1.0
+  provider: ^6.1.2
+  file_picker: ^8.0.0
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.png
+    - assets/data/visa_postcodes.json

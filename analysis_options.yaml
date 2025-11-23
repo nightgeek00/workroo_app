@@ -1,0 +1,10 @@
+analyzer:
+  errors:
+    # 모든 경고를 무시
+    dead_code: ignore
+    unused_import: ignore
+    unnecessary_const: ignore
+    prefer_const_constructors: ignore
+    prefer_final_fields: ignore
+    avoid_print: ignore
+    prefer_single_quotes: ignore

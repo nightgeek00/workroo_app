@@ -19,11 +19,14 @@ class _PostcodeScreenState extends State<PostcodeScreen>
   late final AnimatedMapController _animatedMapController;
 
   Map<String, dynamic> visaRegions = {};
+  Map<String, dynamic> postcodeLocations = {};
+
   String _resultMessage = "Enter a postcode to check visa eligibility";
   Color _messageColor = Colors.black;
   Color _bgColor = Colors.white;
-  LatLng _center = const LatLng(-25.27, 133.77);
-  double _zoom = 4.3;
+
+  LatLng _center = const LatLng(-25.27, 133.77); // Australia center
+  double _zoom = 4.0;
 
   bool _showPinPulse = false;
   late AnimationController _pinAnimController;
@@ -47,6 +50,7 @@ class _PostcodeScreenState extends State<PostcodeScreen>
     )..repeat(reverse: true);
 
     _loadVisaRegions();
+    _loadPostcodeLocations();
   }
 
   @override
@@ -62,6 +66,14 @@ class _PostcodeScreenState extends State<PostcodeScreen>
     });
   }
 
+  Future<void> _loadPostcodeLocations() async {
+    final data =
+        await rootBundle.loadString('assets/data/merged_postcodes_latlng.json');
+    setState(() {
+      postcodeLocations = jsonDecode(data);
+    });
+  }
+
   List<Map<String, String>> _getVisaEligibilityMulti(int code) {
     List<Map<String, String>> results = [];
 
@@ -71,13 +83,12 @@ class _PostcodeScreenState extends State<PostcodeScreen>
 
       for (final stateEntry in states.entries) {
         final state = stateEntry.key;
-        final ranges = List<List<int>>.from(
-          (stateEntry.value as List).map((e) => List<int>.from(e)),
-        );
+        final ranges =
+            (stateEntry.value as List).map((e) => List<int>.from(e)).toList();
 
         for (final range in ranges) {
           if (code >= range[0] && code <= range[1]) {
-            results.add({'type': type, 'state': state});
+            results.add({"type": type, "state": state});
           }
         }
       }
@@ -92,52 +103,81 @@ class _PostcodeScreenState extends State<PostcodeScreen>
 
     final code = int.tryParse(input);
     if (code == null) {
-      setState(() {
-        _resultMessage = "⚠️ Invalid postcode";
-        _messageColor = Colors.orange;
-        _bgColor = const Color(0xFFFFF6E5);
-        _showPinPulse = false;
-      });
+      _setMessage("⚠️ Invalid postcode", Colors.orange, const Color(0xFFFFF6E5));
+      _showPinPulse = false;
+      setState(() {});
       return;
     }
 
+    final codeStr = code.toString();
     final results = _getVisaEligibilityMulti(code);
 
     if (results.isNotEmpty) {
-      _resultMessage = results
-          .map((e) => "• ${e['type']} Visa Eligible (${e['state']})")
-          .join("\n");
-
+      _resultMessage =
+          results.map((e) => "• ${e['type']} Visa Eligible (${e['state']})").join("\n");
       _messageColor = const Color(0xFF16A34A);
       _bgColor = const Color(0xFFE3FFE9);
 
-      final firstState = results.first['state']!;
-      final stateCenter = _getStateCenter(firstState);
+      // 1️⃣ postcode의 실제 위도/경도가 있는 경우
+      if (postcodeLocations.containsKey(codeStr)) {
+        final loc = postcodeLocations[codeStr];
 
-      _animatedMapController.animateTo(
-        dest: stateCenter,
-        zoom: 8.5,
-      );
+        final LatLng point = LatLng(
+          (loc["lat"] as num).toDouble(),
+          (loc["lng"] as num).toDouble(),
+        );
 
-      _center = stateCenter;
-      _zoom = 8.5;
-      _showPinPulse = true;
+        // 지도 애니메이션 이동 + 확대
+        _animatedMapController.animateTo(
+          dest: point,
+          zoom: 16.0,   // 🔥 원하는 만큼 확대
+        );
+
+        // state 변경은 반드시 setState로!
+        setState(() {
+          _center = point;
+          _zoom = 16.0;
+          _showPinPulse = true;
+        });
+      }
+
+      // 2️⃣ (postcodeLocations에 없는 경우는 state 중심으로 이동)
+      else {
+        final state = results.first["state"]!;
+        final stateCenter = _getStateCenter(state);
+
+        _animatedMapController.animateTo(dest: stateCenter, zoom: 10.0);
+
+        setState(() {
+          _center = stateCenter;
+          _zoom = 10.0;
+          _showPinPulse = true;
+        });
+      }
     } else {
-      _resultMessage = "❌ $code is NOT eligible for visa extension";
-      _messageColor = Colors.red;
-      _bgColor = const Color(0xFFFFEAEA);
-
-      _animatedMapController.animateTo(
-        dest: const LatLng(-33.86, 151.21),
-        zoom: 5.5,
+      // ❌ 비자 불가능한 지역
+      _setMessage(
+        "❌ $code is NOT eligible for visa extension",
+        Colors.red,
+        const Color(0xFFFFEAEA),
       );
 
-      _center = const LatLng(-33.86, 151.21);
-      _zoom = 5.5;
-      _showPinPulse = false;
-    }
+      final fallback = const LatLng(-33.86, 151.21);
 
-    setState(() {});
+      _animatedMapController.animateTo(dest: fallback, zoom: 5.5);
+
+      setState(() {
+        _center = fallback;
+        _zoom = 5.5;
+        _showPinPulse = false;
+      });
+    }
+  }
+
+  void _setMessage(String msg, Color textColor, Color bgColor) {
+    _resultMessage = msg;
+    _messageColor = textColor;
+    _bgColor = bgColor;
   }
 
   LatLng _getStateCenter(String state) {
@@ -182,13 +222,15 @@ class _PostcodeScreenState extends State<PostcodeScreen>
                   child: TextField(
                     controller: _controller,
                     keyboardType: TextInputType.number,
+
+                    onSubmitted: (value) => _checkPostcode(),   // ← 여기 추가!
+
                     decoration: InputDecoration(
                       hintText: "Enter postcode (e.g. 4470)",
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     ),
                   ),
                 ),
@@ -202,8 +244,10 @@ class _PostcodeScreenState extends State<PostcodeScreen>
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text("Check",
-                      style: TextStyle(color: Colors.white)),
+                  child: const Text(
+                    "Check",
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
@@ -217,6 +261,7 @@ class _PostcodeScreenState extends State<PostcodeScreen>
                   options: MapOptions(
                     initialCenter: _center,
                     initialZoom: _zoom,
+                    keepAlive: true, // 🔥 zoom 유지 핵심
                     minZoom: 3,
                     maxZoom: 18,
                   ),
@@ -225,21 +270,29 @@ class _PostcodeScreenState extends State<PostcodeScreen>
                       urlTemplate:
                           'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     ),
-                    MarkerLayer(markers: [
-                      Marker(
-                        width: _showPinPulse ? 80 : 60,
-                        height: _showPinPulse ? 80 : 60,
-                        point: _center,
-                        child: _showPinPulse
-                            ? ScaleTransition(
-                                scale: _pinAnimController,
-                                child: const Icon(Icons.location_on,
-                                    color: Color(0xFF3C5BFD), size: 40),
-                              )
-                            : const Icon(Icons.location_on,
-                                color: Color(0xFF3C5BFD), size: 38),
-                      ),
-                    ]),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          width: _showPinPulse ? 80 : 60,
+                          height: _showPinPulse ? 80 : 60,
+                          point: _center,
+                          child: _showPinPulse
+                              ? ScaleTransition(
+                                  scale: _pinAnimController,
+                                  child: const Icon(
+                                    Icons.location_on,
+                                    color: Color(0xFF3C5BFD),
+                                    size: 40,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.location_on,
+                                  color: Color(0xFF3C5BFD),
+                                  size: 38,
+                                ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),

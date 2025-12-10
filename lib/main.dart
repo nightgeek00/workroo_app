@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'provider/visa_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/visa_screen.dart';
+import 'screens/payslip_screen.dart';
 import 'screens/postcode_screen.dart';
 import 'screens/profile_screen.dart';
 
@@ -46,6 +47,7 @@ class _MainShellState extends State<MainShell> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const VisaScreen(),
+    // const PayslipScreen(),
     const PostcodeScreen(),
     const ProfileScreen(),
   ];
